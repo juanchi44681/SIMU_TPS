@@ -16,6 +16,25 @@ Aplicación web (TP de Simulación) que genera muestras aleatorias de distintas 
 
 Para cada distribución se puede configurar la cantidad de datos a generar y la cantidad de intervalos (bins) del histograma.
 
+## Cómo funciona / comportamiento según los parámetros
+
+Las tres páginas (`Uniforme`, `Normal`, `Exponencial`) comparten el mismo patrón: un layout con inputs + un `callback` que se dispara cada vez que cambia alguno de ellos.
+
+- **Slider de bins (5 a 25)**: define en cuántos intervalos se agrupa el histograma. No cambia los datos generados, solo cómo se agrupan visualmente — con pocos bins se ven barras más anchas (menos detalle), con más bins, barras más finas.
+- **Cantidad de datos (`n`)**: cuántos números aleatorios generar. A mayor `n`, el histograma se aproxima más a la forma teórica de la distribución (ley de los grandes números). Es útil comparar `n=100` vs `n=100.000` para ver cómo el histograma se "prolija".
+- **Parámetros propios de cada distribución**:
+  - *Uniforme*: `A` y `B` (se valida que `A < B`; si no, se muestra un mensaje de error y no se calcula nada).
+  - *Normal*: `μ` (media) y `σ` (se valida que `σ > 0`).
+  - *Exponencial*: `λ` (se valida que `λ > 0`).
+
+Ante cualquier cambio de input, el callback:
+
+1. Valida los parámetros (si son inválidos, muestra el error y no recalcula).
+2. Genera un nuevo vector de `n` valores llamando a la función correspondiente de `GeneradorDeDistribuciones.py` (con `numpy.random` como fallback si el algoritmo manual fallara).
+3. Calcula los bordes de los bins con `numpy.linspace`, cerrando el último borde (`np.nextafter`) para que el valor máximo generado no se pierda por redondeo de floats.
+4. Regenera el histograma (Plotly) y la tabla de frecuencias (AG Grid) usando esos mismos bordes.
+5. Guarda el dataset generado en un `dcc.Store` (memoria del navegador) para que el botón **Descargar CSV** exporte exactamente lo que se ve en pantalla, sin volver a generar números aleatorios nuevos (que serían distintos a los mostrados).
+
 ## Stack técnico
 
 - [Dash](https://dash.plotly.com/) (Flask + Plotly) como framework web y de visualización.

@@ -47,10 +47,17 @@ msj_error = html.P(id="mensaje_error_exponencial", className="text-danger")
 div = html.Div(id="table_exponencial")
 
 layout = html.Div([
-    html.H1(
-        "Distribución exponencial",
-        className="fs-4 text-center py-2 bg-primary text-white rounded-pill w-50 mx-auto d-block"
-    ),
+    html.Div([
+        html.H1(
+            "Distribución exponencial",
+            className="fs-4 text-center py-2 bg-primary text-white rounded-pill w-50 mx-auto d-block"
+        ),
+        dbc.Badge(
+            "Método: Transformada inversa",
+            color="info", text_color="dark", pill=True,
+            className="position-absolute top-0 end-0 mt-2 me-2"
+        ),
+    ], className="position-relative mb-2"),
     dcc.Slider(
         id="bins-slider-exponencial",
         min=5, max=25, step=5, value=15,
