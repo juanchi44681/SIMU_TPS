@@ -1,0 +1,165 @@
+import dash
+from dash import callback, Output, Input, html, dcc, no_update, State
+import dash_bootstrap_components as dbc
+import plotly.graph_objects as go
+import pandas as pd
+import GeneradorDeDistribuciones
+import GenerarTabla
+
+dash.register_page(
+    __name__,
+    path="/exponencial",
+    name="Exponencial",
+    title="Exponencial",
+    order=1
+)
+
+LABEL_STYLE = {"minWidth": "190px", "textAlign": "end"}
+ROW_STYLE = {"width": "380px"}
+
+number_of_data = dbc.InputGroup([
+    dbc.Label("Cantidad de datos:", html_for="data_input_n_exponencial", className="me-2 mb-0", style=LABEL_STYLE),
+    dbc.Input(
+        id="data_input_n_exponencial",
+        type="number",
+        min=1,
+        max=1_000_000,
+        step=1,
+        value=10_000,
+        required=True,
+        size="sm",
+    )
+], className="mx-auto align-items-center mb-2", style=ROW_STYLE)
+
+lambdan = dbc.InputGroup([
+    dbc.Label("Lambda:", className="me-2 mb-0", style=LABEL_STYLE),
+    dbc.Input(
+        id="data_input_lambdan_exponencial",
+        type="number",
+        step="any",
+        value=0,
+        required=True,
+        size="sm",
+    )
+], className="mx-auto align-items-center mb-2", style=ROW_STYLE)
+
+msj_error = html.P(id="mensaje_error_exponencial", className="text-danger")
+div = html.Div(id="table_exponencial")
+
+layout = html.Div([
+    html.H1(
+        "Distribución exponencial",
+        className="fs-4 text-center py-2 bg-primary text-white rounded-pill w-50 mx-auto d-block"
+    ),
+    dcc.Slider(
+        id="bins-slider-exponencial",
+        min=5, max=25, step=5, value=15,
+        marks={i: str(i) for i in range(5, 26, 5)},
+        className="mb-3"
+    ),
+    number_of_data,
+    lambdan,
+    html.Div(
+        dbc.Button("Descargar CSV", id="btn_download_exponencial", color="success", className="rounded-pill px-4"),
+        className="text-center my-2"
+    ),
+    dcc.Download(id="download_csv_exponencial"),
+    dcc.Store(id="store_exponencial_df"),   # 👈 agregado aquí
+    msj_error,
+    dcc.Graph(id="histograma_exponencial", className="inline-block"),
+    div
+], className="p-3")
+
+
+@callback(
+    Output("download_csv_exponencial", "data"),
+    Output("table_exponencial", "children", allow_duplicate=True),
+    Output("mensaje_error_exponencial", "children", allow_duplicate=True),
+    Output("histograma_exponencial", "figure", allow_duplicate=True),
+    Output("store_exponencial_df", "data"),   # 👈 guardamos df aquí
+    Input("bins-slider-exponencial", "value"),
+    Input("data_input_lambdan_exponencial", "value"),
+    Input("data_input_n_exponencial", "value"),
+    Input("btn_download_exponencial", "n_clicks"),
+    State("store_exponencial_df", "data"),    # 👈 lo leemos aquí
+    prevent_initial_call=True
+)
+def update_histogram_exponencial(bins, lambdan, n, n_clicks, cached_df):
+    import numpy as np
+
+    empty_fig = go.Figure()
+    empty_table = []
+    download = no_update
+    store_out = no_update  # por defecto no sobrescribimos
+
+    trigger = dash.ctx.triggered_id
+
+    # --- Caso: click en descargar ---
+    if trigger == "btn_download_exponencial" and n_clicks:
+        if cached_df is None:
+            return no_update, no_update, "No hay datos generados para descargar.", no_update, no_update
+        df = pd.DataFrame(cached_df)
+        return dcc.send_data_frame(
+            df.to_csv,
+            "exponencial_datos.csv",
+            index=False, sep=";", decimal=",", encoding="utf-8-sig"
+        ), no_update, "", no_update, no_update
+
+    # --- Caso: sliders/inputs cambian -> recalculamos ---
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        n = 0
+    if n < 1:
+        return no_update, empty_table, "La cantidad de valores debe ser ≥ 1", empty_fig, None
+
+    if lambdan is None or lambdan <= 0:
+        return no_update, empty_table, "Lambda debe ser mayor que 0", empty_fig, None
+
+    # Generamos valores
+    try:
+        valores = GeneradorDeDistribuciones.generar_exponencial(lambdan, n)
+    except Exception:
+        valores = np.random.exponential(scale=1.0 / lambdan, size=n)
+
+    df = pd.DataFrame({"valores": valores})
+    s = df["valores"].dropna().to_numpy()
+
+    # Bordes de bins
+    xmin, xmax = float(np.min(s)), float(np.max(s))
+    if xmin == xmax:
+        eps = np.finfo(float).eps
+        edges = np.array([xmin, np.nextafter(xmin + eps, np.inf)], dtype=float)
+        bins = 1
+    else:
+        xmax_closed = np.nextafter(xmax, np.inf)
+        edges = np.linspace(xmin, xmax_closed, int(bins) + 1, dtype=float)
+
+    counts, _ = np.histogram(s, bins=edges)
+    centers = (edges[:-1] + edges[1:]) / 2.0
+    widths = np.diff(edges)
+
+    display_rights = edges[1:].copy()
+    display_rights[-1] = xmax
+
+    hover_text = [
+        f"Intervalo: [{l:.4f}, {r:.4f}{']' if i == len(counts)-1 else ')'}<br>"
+        f"Frecuencia: {int(c):,d}"
+        for i, (l, r, c) in enumerate(zip(edges[:-1], display_rights, counts))
+    ]
+
+    fig = go.Figure()
+    fig.add_bar(x=centers, y=counts, width=widths, text=hover_text,
+                name="Frecuencia", hovertemplate="%{text}<extra></extra>")
+    fig.update_layout(
+        title=f"Histograma exponencial — {bins} intervalos, λ={lambdan}, n={n:,}",
+        xaxis_title="valores", yaxis_title="Frecuencia"
+    )
+
+    # Tabla
+    tabla_comp = GenerarTabla.tabla_frecuencia(valores, bins=edges, decimales=4)
+
+    # Guardamos dataset en el store
+    store_out = df.to_dict(orient="list")
+
+    return no_update, tabla_comp, "", fig, store_out
